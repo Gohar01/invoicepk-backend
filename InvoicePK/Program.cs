@@ -9,8 +9,14 @@ using InvoicePK.Helpers;
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Database ──────────────────────────────────────
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
+// Uses PostgreSQL in production (Railway), SQL Server locally
+var connectionString = builder.Configuration.GetConnectionString("Default")!;
+var isProduction = builder.Environment.IsProduction();
+
+if (isProduction)
+    builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(connectionString));
+else
+    builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlServer(connectionString));
 
 // ── JWT Auth ──────────────────────────────────────
 var jwtKey = builder.Configuration["Jwt:Key"]!;
@@ -44,7 +50,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend", policy =>
         policy.WithOrigins(
             "http://localhost:5173",
-            "https://invoicepk.vercel.app"
+            "https://invoicepk-frontend.vercel.app"  // update with your actual Vercel URL
         )
         .AllowAnyHeader()
         .AllowAnyMethod());
@@ -74,6 +80,13 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+// ── Auto-create tables on startup ─────────────────
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.EnsureCreated();
+}
 
 // ── Middleware Pipeline ───────────────────────────
 if (app.Environment.IsDevelopment())
