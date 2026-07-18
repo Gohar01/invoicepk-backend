@@ -4,6 +4,8 @@ namespace InvoicePK.DTOs.Invoice;
 
 public record InvoiceItemRequest(
     [Required] string Description,
-    [Required, Range(0.01, double.MaxValue)] decimal Quantity,
-    [Required, Range(0.01, double.MaxValue)] decimal UnitPrice
+    [Required, Range(1, double.MaxValue, ErrorMessage = "Quantity must be greater than 0")]
+    decimal Quantity,
+    [Required, Range(1, double.MaxValue, ErrorMessage = "Unit price must be greater than 0")]
+    decimal UnitPrice
 );

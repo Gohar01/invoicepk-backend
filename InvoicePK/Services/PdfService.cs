@@ -28,18 +28,19 @@ public class PdfService
                     // ── Header ────────────────────────────────
                     col.Item().Row(row =>
                     {
-                        // Business info (left)
-                        row.RelativeItem().Column(c =>
+                        // Business info (left) — now includes logo if present
+                        row.RelativeItem().Row(inner =>
                         {
-                            c.Item().Text(user.BusinessName ?? user.FullName)
-                                .FontSize(22).Bold().FontColor("#1a1a1a");
-                            if (user.Address != null)
-                                c.Item().Text(user.Address).FontColor("#555555");
-                            if (user.Phone != null)
-                                c.Item().Text(user.Phone).FontColor("#555555");
-                            c.Item().Text(user.Email).FontColor("#555555");
-                            if (user.NTN != null)
-                                c.Item().Text($"NTN: {user.NTN}").FontColor("#555555");
+                            var logoBytes = DecodeLogo(user.LogoUrl);
+                            if (logoBytes != null)
+                            {
+                                inner.ConstantItem(50).Height(50).Image(logoBytes).FitArea();
+                                inner.RelativeItem().PaddingLeft(10).Column(c => BuildBusinessInfo(c, user));
+                            }
+                            else
+                            {
+                                inner.RelativeItem().Column(c => BuildBusinessInfo(c, user));
+                            }
                         });
 
                         // Invoice title (right)
@@ -201,5 +202,32 @@ public class PdfService
         });
 
         return document.GeneratePdf();
+    }
+
+    private static byte[]? DecodeLogo(string? logoUrl)
+    {
+        if (string.IsNullOrEmpty(logoUrl) || !logoUrl.Contains(",")) return null;
+        try
+        {
+            var base64Part = logoUrl.Split(',')[1]; // strip "data:image/png;base64,"
+            return Convert.FromBase64String(base64Part);
+        }
+        catch
+        {
+            return null; // if corrupt/invalid, just skip rendering it
+        }
+    }
+
+    private static void BuildBusinessInfo(ColumnDescriptor c, User user)
+    {
+        c.Item().Text(user.BusinessName ?? user.FullName)
+            .FontSize(22).Bold().FontColor("#1a1a1a");
+        if (user.Address != null)
+            c.Item().Text(user.Address).FontColor("#555555");
+        if (user.Phone != null)
+            c.Item().Text(user.Phone).FontColor("#555555");
+        c.Item().Text(user.Email).FontColor("#555555");
+        if (user.NTN != null)
+            c.Item().Text($"NTN: {user.NTN}").FontColor("#555555");
     }
 }

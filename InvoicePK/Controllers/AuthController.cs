@@ -171,4 +171,53 @@ public class AuthController : ControllerBase
         return Ok(new { message = $"Password reset for {user.Email}. Share the new password with them securely." });
     }
 
+    // POST /api/auth/logo
+    [Authorize]
+    [HttpPost("logo")]
+    [RequestSizeLimit(2 * 1024 * 1024)] // 2MB max
+    public async Task<IActionResult> UploadLogo(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { message = "No file uploaded." });
+
+        var allowedTypes = new[] { "image/png", "image/jpeg", "image/jpg", "image/webp" };
+        if (!allowedTypes.Contains(file.ContentType))
+            return BadRequest(new { message = "Only PNG, JPG, or WEBP images are allowed." });
+
+        if (file.Length > 2 * 1024 * 1024)
+            return BadRequest(new { message = "Logo must be smaller than 2MB." });
+
+        var userId = User.GetUserId();
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return NotFound();
+
+        // Convert to base64 data URI so it can be stored directly in the DB
+        // and used directly as an <img src="..."> or in the PDF generator.
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        var base64 = Convert.ToBase64String(ms.ToArray());
+        user.LogoUrl = $"data:{file.ContentType};base64,{base64}";
+        user.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+
+        return Ok(new { logoUrl = user.LogoUrl });
+    }
+
+    // DELETE /api/auth/logo
+    [Authorize]
+    [HttpDelete("logo")]
+    public async Task<IActionResult> DeleteLogo()
+    {
+        var userId = User.GetUserId();
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null) return NotFound();
+
+        user.LogoUrl = null;
+        user.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Logo removed." });
+    }
+
 }
