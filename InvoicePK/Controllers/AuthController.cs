@@ -4,6 +4,7 @@ using InvoicePK.DTOs.Auth;
 using InvoicePK.DTOs.Profile;
 using InvoicePK.Helpers;
 using InvoicePK.Models;
+using InvoicePK.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,11 +17,15 @@ public class AuthController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly JwtHelper _jwt;
+    private readonly EmailService _email;
+    private readonly IConfiguration _config;
 
-    public AuthController(AppDbContext db, JwtHelper jwt)
+    public AuthController(AppDbContext db, JwtHelper jwt, EmailService email, IConfiguration config)
     {
         _db = db;
         _jwt = jwt;
+        _email = email;
+        _config = config;
     }
 
     // POST /api/auth/register
@@ -55,7 +60,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Login(LoginRequest req)
     {
         var user = await _db.Users
-            .FirstOrDefaultAsync(u => u.Email == req.Email.ToLower());
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == req.Email.ToLower());
 
         if (user == null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
             return Unauthorized(new { message = "Invalid email or password." });
@@ -102,4 +107,68 @@ public class AuthController : ControllerBase
 
         return Ok(new { message = "Profile updated." });
     }
+
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest req)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == req.Email.ToLower());
+
+        // Always return success even if email not found (security best practice —
+        // don't reveal which emails are registered)
+        if (user == null)
+            return Ok(new { message = "If that email exists, a reset link has been sent." });
+
+        // Generate a secure random token
+        user.ResetToken = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        user.ResetTokenExpiresAt = DateTime.UtcNow.AddHours(1); // expires in 1 hour
+        await _db.SaveChangesAsync();
+
+        // Build reset link — update FRONTEND_URL in appsettings.json
+        var frontendUrl = _config["FrontendUrl"] ?? "http://localhost:5173";
+        var resetLink = $"{frontendUrl}/reset-password?token={user.ResetToken}";
+
+        // Send email
+        await _email.SendPasswordResetAsync(user, resetLink);
+
+        return Ok(new { message = "If that email exists, a reset link has been sent." });
+    }
+
+    // POST /api/auth/reset-password
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest req)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.ResetToken == req.Token);
+
+        if (user == null || user.ResetTokenExpiresAt == null || user.ResetTokenExpiresAt < DateTime.UtcNow)
+            return BadRequest(new { message = "This reset link is invalid or has expired." });
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+        user.ResetToken = null;
+        user.ResetTokenExpiresAt = null;
+        user.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Password reset successfully. You can now log in." });
+    }
+
+    // POST /api/auth/admin-reset-password
+    [HttpPost("admin-reset-password")]
+    public async Task<IActionResult> AdminResetPassword([FromBody] AdminResetRequest req)
+    {
+        // Simple secret key check — set this in Railway env vars as AdminSecret
+        var adminSecret = _config["AdminSecret"];
+        if (string.IsNullOrEmpty(adminSecret) || req.AdminSecret != adminSecret)
+            return Unauthorized(new { message = "Invalid admin secret." });
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == req.Email.ToLower());
+        if (user == null)
+            return NotFound(new { message = "No user found with that email." });
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+        user.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = $"Password reset for {user.Email}. Share the new password with them securely." });
+    }
+
 }

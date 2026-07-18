@@ -109,6 +109,62 @@ public class EmailService
         }
     }
 
+    // ── Password reset email ────────────────────────
+    public async Task<bool> SendPasswordResetAsync(User user, string resetLink)
+    {
+        try
+        {
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress("InvoicePK", _config["Email:From"]!));
+            message.To.Add(new MailboxAddress(user.FullName, user.Email));
+        message.Subject = "Reset Your InvoicePK Password";
+
+        var builder = new BodyBuilder
+        {
+            HtmlBody = $"""
+                <!DOCTYPE html>
+                <html>
+                <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
+                  <div style="background:#00C16A;padding:20px;border-radius:8px 8px 0 0;">
+                    <h1 style="color:white;margin:0;font-size:22px;">InvoicePK</h1>
+                  </div>
+                  <div style="background:#f9f9f9;padding:24px;border:1px solid #eee;">
+                    <p>Hi <strong>{user.FullName}</strong>,</p>
+                    <p>We received a request to reset your password. Click the button below to set a new one:</p>
+                    <div style="text-align:center;margin:24px 0;">
+                      <a href="{resetLink}"
+                         style="background:#00C16A;color:white;padding:12px 28px;border-radius:8px;
+                                text-decoration:none;font-weight:bold;display:inline-block;">
+                        Reset Password
+                      </a>
+                    </div>
+                    <p style="font-size:13px;color:#888;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+                    <p style="font-size:13px;color:#888;">Or copy this link: {resetLink}</p>
+                  </div>
+                </body>
+                </html>
+                """,
+            TextBody = $"Reset your password: {resetLink} (expires in 1 hour)"
+        };
+
+        message.Body = builder.ToMessageBody();
+
+        using var smtp = new SmtpClient();
+        await smtp.ConnectAsync(_config["Email:SmtpHost"],
+            int.Parse(_config["Email:SmtpPort"]!), SecureSocketOptions.StartTls);
+        await smtp.AuthenticateAsync(_config["Email:Username"], _config["Email:Password"]);
+        await smtp.SendAsync(message);
+        await smtp.DisconnectAsync(true);
+
+        return true;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Password reset email error: {ex.Message}");
+        return false;
+    }
+  }
+
     // ── HTML Templates ────────────────────────────
     private static string BuildEmailHtml(Invoice invoice, User user) => $"""
         <!DOCTYPE html>

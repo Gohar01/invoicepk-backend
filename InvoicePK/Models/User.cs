@@ -15,7 +15,9 @@ public class User
     public DateTime? PlanExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-
+    // ── NEW: Password reset fields ──
+    public string? ResetToken { get; set; }
+    public DateTime? ResetTokenExpiresAt { get; set; }
     // Navigation
     public ICollection<Client> Clients { get; set; } = new List<Client>();
     public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
