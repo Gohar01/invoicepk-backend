@@ -11,6 +11,7 @@ public class PdfService
     {
         // Set QuestPDF license (free for open source / small projects)
         QuestPDF.Settings.License = LicenseType.Community;
+        QuestPDF.Settings.CheckIfAllTextGlyphsAreAvailable = true;
     }
 
     public byte[] GenerateInvoicePdf(Invoice invoice, User user)
@@ -21,7 +22,7 @@ public class PdfService
             {
                 page.Size(PageSizes.A4);
                 page.Margin(40);
-                page.DefaultTextStyle(x => x.FontSize(10).FontFamily("Arial"));
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily("Liberation Sans"));
 
                 page.Content().Column(col =>
                 {
