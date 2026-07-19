@@ -42,6 +42,7 @@ builder.Services.AddSingleton<JwtHelper>();
 builder.Services.AddScoped<InvoicePK.Services.InvoiceNumberService>();
 builder.Services.AddScoped<InvoicePK.Services.PdfService>();
 builder.Services.AddScoped<InvoicePK.Services.EmailService>();
+builder.Services.AddHttpClient();
 builder.Services.AddControllers();
 
 // ── CORS (for React frontend) ─────────────────────

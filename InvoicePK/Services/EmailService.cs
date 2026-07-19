@@ -1,172 +1,151 @@
-using MailKit.Net.Smtp;
-using MailKit.Security;
-using MimeKit;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using InvoicePK.Models;
 
 namespace InvoicePK.Services;
 
+// Uses Resend's HTTPS API instead of SMTP — this works on Railway's Free/Hobby
+// plans (and any host), since Railway blocks outbound SMTP ports (465/587/2525)
+// on everything below the Pro plan. HTTPS (port 443) is never blocked.
 public class EmailService
 {
     private readonly IConfiguration _config;
+    private readonly HttpClient _http;
 
-    public EmailService(IConfiguration config) => _config = config;
+    public EmailService(IConfiguration config, IHttpClientFactory httpClientFactory)
+    {
+        _config = config;
+        _http = httpClientFactory.CreateClient();
+        _http.BaseAddress = new Uri("https://api.resend.com/");
+        _http.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", _config["Resend:ApiKey"]);
+    }
 
+    // ── Send Invoice ──────────────────────────────
     public async Task<bool> SendInvoiceAsync(Invoice invoice, User user, byte[] pdfBytes)
     {
-        try
-        {
-            var message = new MimeMessage();
-
-            // From
-            message.From.Add(new MailboxAddress(
-                user.BusinessName ?? user.FullName,
-                _config["Email:From"]!
-            ));
-
-            // To (client email)
-            if (string.IsNullOrEmpty(invoice.Client.Email))
-                throw new Exception("Client has no email address.");
-
-            message.To.Add(new MailboxAddress(invoice.Client.Name, invoice.Client.Email));
-
-            // Subject
-            message.Subject = $"Invoice {invoice.InvoiceNumber} from {user.BusinessName ?? user.FullName}";
-
-            // Body + PDF attachment
-            var builder = new BodyBuilder
-            {
-                HtmlBody = BuildEmailHtml(invoice, user),
-                TextBody = BuildEmailText(invoice, user)
-            };
-
-            builder.Attachments.Add(
-                $"{invoice.InvoiceNumber}.pdf",
-                pdfBytes,
-                ContentType.Parse("application/pdf")
-            );
-
-            message.Body = builder.ToMessageBody();
-
-            // Send via SMTP
-            using var smtp = new SmtpClient();
-            await smtp.ConnectAsync(
-                _config["Email:SmtpHost"],
-                int.Parse(_config["Email:SmtpPort"]!),
-                SecureSocketOptions.StartTls
-            );
-            await smtp.AuthenticateAsync(
-                _config["Email:Username"],
-                _config["Email:Password"]
-            );
-            await smtp.SendAsync(message);
-            await smtp.DisconnectAsync(true);
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Email error: {ex.Message}");
+        if (string.IsNullOrEmpty(invoice.Client.Email))
             return false;
-        }
+
+        var html = BuildInvoiceHtml(invoice, user);
+        return await SendAsync(
+            to: invoice.Client.Email,
+            toName: invoice.Client.Name,
+            fromName: user.BusinessName ?? user.FullName,
+            subject: $"Invoice {invoice.InvoiceNumber} from {user.BusinessName ?? user.FullName}",
+            html: html,
+            attachmentName: $"{invoice.InvoiceNumber}.pdf",
+            attachmentBytes: pdfBytes
+        );
     }
 
-    // ── Email reminder ────────────────────────────
+    // ── Send Reminder ─────────────────────────────
     public async Task<bool> SendReminderAsync(Invoice invoice, User user, byte[] pdfBytes)
     {
+        if (string.IsNullOrEmpty(invoice.Client.Email))
+            return false;
+
+        var html = BuildReminderHtml(invoice, user);
+        return await SendAsync(
+            to: invoice.Client.Email,
+            toName: invoice.Client.Name,
+            fromName: user.BusinessName ?? user.FullName,
+            subject: $"Payment Reminder — Invoice {invoice.InvoiceNumber} is Overdue",
+            html: html,
+            attachmentName: $"{invoice.InvoiceNumber}.pdf",
+            attachmentBytes: pdfBytes
+        );
+    }
+
+    // ── Send Password Reset ───────────────────────
+    public async Task<bool> SendPasswordResetAsync(User user, string resetLink)
+    {
+        var html = $"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
+              <div style="background:#00C16A;padding:20px;border-radius:8px 8px 0 0;">
+                <h1 style="color:white;margin:0;font-size:22px;">InvoicePK</h1>
+              </div>
+              <div style="background:#f9f9f9;padding:24px;border:1px solid #eee;">
+                <p>Hi <strong>{user.FullName}</strong>,</p>
+                <p>We received a request to reset your password. Click the button below to set a new one:</p>
+                <div style="text-align:center;margin:24px 0;">
+                  <a href="{resetLink}"
+                     style="background:#00C16A;color:white;padding:12px 28px;border-radius:8px;
+                            text-decoration:none;font-weight:bold;display:inline-block;">
+                    Reset Password
+                  </a>
+                </div>
+                <p style="font-size:13px;color:#888;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+                <p style="font-size:13px;color:#888;">Or copy this link: {resetLink}</p>
+              </div>
+            </body>
+            </html>
+            """;
+
+        return await SendAsync(
+            to: user.Email,
+            toName: user.FullName,
+            fromName: "InvoicePK",
+            subject: "Reset Your InvoicePK Password",
+            html: html
+        );
+    }
+
+    // ── Core send method (calls Resend API) ───────
+    private async Task<bool> SendAsync(
+        string to, string toName, string fromName, string subject, string html,
+        string? attachmentName = null, byte[]? attachmentBytes = null)
+    {
         try
         {
-            var message = new MimeMessage();
-            message.From.Add(new MailboxAddress(
-                user.BusinessName ?? user.FullName,
-                _config["Email:From"]!
-            ));
-            message.To.Add(new MailboxAddress(invoice.Client.Name, invoice.Client.Email!));
-            message.Subject = $"Payment Reminder — Invoice {invoice.InvoiceNumber} is Overdue";
+            var fromEmail = _config["Resend:FromEmail"] ?? "onboarding@resend.dev";
 
-            var builder = new BodyBuilder
+            var payload = new Dictionary<string, object?>
             {
-                HtmlBody = BuildReminderHtml(invoice, user),
-                TextBody = $"Reminder: Invoice {invoice.InvoiceNumber} of PKR {invoice.TotalAmount:N0} was due on {invoice.DueDate}."
+                ["from"]    = $"{fromName} <{fromEmail}>",
+                ["to"]      = new[] { to },
+                ["subject"] = subject,
+                ["html"]    = html,
             };
-            builder.Attachments.Add($"{invoice.InvoiceNumber}.pdf", pdfBytes,
-                ContentType.Parse("application/pdf"));
 
-            message.Body = builder.ToMessageBody();
+            if (attachmentBytes != null && attachmentName != null)
+            {
+                payload["attachments"] = new[]
+                {
+                    new Dictionary<string, object>
+                    {
+                        ["filename"] = attachmentName,
+                        ["content"]  = Convert.ToBase64String(attachmentBytes),
+                    }
+                };
+            }
 
-            using var smtp = new SmtpClient();
-            await smtp.ConnectAsync(_config["Email:SmtpHost"],
-                int.Parse(_config["Email:SmtpPort"]!), SecureSocketOptions.StartTls);
-            await smtp.AuthenticateAsync(_config["Email:Username"], _config["Email:Password"]);
-            await smtp.SendAsync(message);
-            await smtp.DisconnectAsync(true);
+            var json = JsonSerializer.Serialize(payload);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _http.PostAsync("emails", content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"Resend API error ({response.StatusCode}): {errorBody}");
+                return false;
+            }
 
             return true;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Reminder email error: {ex.Message}");
+            Console.WriteLine($"Email send error: {ex.Message}");
             return false;
         }
     }
 
-    // ── Password reset email ────────────────────────
-    public async Task<bool> SendPasswordResetAsync(User user, string resetLink)
-    {
-        try
-        {
-            var message = new MimeMessage();
-            message.From.Add(new MailboxAddress("InvoicePK", _config["Email:From"]!));
-            message.To.Add(new MailboxAddress(user.FullName, user.Email));
-        message.Subject = "Reset Your InvoicePK Password";
-
-        var builder = new BodyBuilder
-        {
-            HtmlBody = $"""
-                <!DOCTYPE html>
-                <html>
-                <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
-                  <div style="background:#00C16A;padding:20px;border-radius:8px 8px 0 0;">
-                    <h1 style="color:white;margin:0;font-size:22px;">InvoicePK</h1>
-                  </div>
-                  <div style="background:#f9f9f9;padding:24px;border:1px solid #eee;">
-                    <p>Hi <strong>{user.FullName}</strong>,</p>
-                    <p>We received a request to reset your password. Click the button below to set a new one:</p>
-                    <div style="text-align:center;margin:24px 0;">
-                      <a href="{resetLink}"
-                         style="background:#00C16A;color:white;padding:12px 28px;border-radius:8px;
-                                text-decoration:none;font-weight:bold;display:inline-block;">
-                        Reset Password
-                      </a>
-                    </div>
-                    <p style="font-size:13px;color:#888;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email.</p>
-                    <p style="font-size:13px;color:#888;">Or copy this link: {resetLink}</p>
-                  </div>
-                </body>
-                </html>
-                """,
-            TextBody = $"Reset your password: {resetLink} (expires in 1 hour)"
-        };
-
-        message.Body = builder.ToMessageBody();
-
-        using var smtp = new SmtpClient();
-        await smtp.ConnectAsync(_config["Email:SmtpHost"],
-            int.Parse(_config["Email:SmtpPort"]!), SecureSocketOptions.StartTls);
-        await smtp.AuthenticateAsync(_config["Email:Username"], _config["Email:Password"]);
-        await smtp.SendAsync(message);
-        await smtp.DisconnectAsync(true);
-
-        return true;
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Password reset email error: {ex.Message}");
-        return false;
-    }
-  }
-
     // ── HTML Templates ────────────────────────────
-    private static string BuildEmailHtml(Invoice invoice, User user) => $"""
+    private static string BuildInvoiceHtml(Invoice invoice, User user) => $"""
         <!DOCTYPE html>
         <html>
         <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
@@ -208,13 +187,6 @@ public class EmailService
         </body>
         </html>
         """;
-
-    private static string BuildEmailText(Invoice invoice, User user) =>
-        $"Dear {invoice.Client.Name},\n\n" +
-        $"Please find attached invoice {invoice.InvoiceNumber}.\n" +
-        $"Amount: PKR {invoice.TotalAmount:N0}\n" +
-        $"Due Date: {invoice.DueDate:dd MMM yyyy}\n\n" +
-        $"Thank you,\n{user.FullName}";
 
     private static string BuildReminderHtml(Invoice invoice, User user) => $"""
         <!DOCTYPE html>
