@@ -23,10 +23,10 @@ public class EmailService
     }
 
     // ── Send Invoice ──────────────────────────────
-    public async Task<bool> SendInvoiceAsync(Invoice invoice, User user, byte[] pdfBytes)
+    public async Task<(bool Success, string? Error)> SendInvoiceAsync(Invoice invoice, User user, byte[] pdfBytes)
     {
         if (string.IsNullOrEmpty(invoice.Client.Email))
-            return false;
+            return (false, "Client has no email address.");
 
         var html = BuildInvoiceHtml(invoice, user);
         return await SendAsync(
@@ -41,10 +41,10 @@ public class EmailService
     }
 
     // ── Send Reminder ─────────────────────────────
-    public async Task<bool> SendReminderAsync(Invoice invoice, User user, byte[] pdfBytes)
+    public async Task<(bool Success, string? Error)> SendReminderAsync(Invoice invoice, User user, byte[] pdfBytes)
     {
         if (string.IsNullOrEmpty(invoice.Client.Email))
-            return false;
+            return (false, "Client has no email address.");
 
         var html = BuildReminderHtml(invoice, user);
         return await SendAsync(
@@ -59,7 +59,7 @@ public class EmailService
     }
 
     // ── Send Password Reset ───────────────────────
-    public async Task<bool> SendPasswordResetAsync(User user, string resetLink)
+    public async Task<(bool Success, string? Error)> SendPasswordResetAsync(User user, string resetLink)
     {
         var html = $"""
             <!DOCTYPE html>
@@ -95,7 +95,7 @@ public class EmailService
     }
 
     // ── Core send method (calls Resend API) ───────
-    private async Task<bool> SendAsync(
+    private async Task<(bool Success, string? Error)> SendAsync(
         string to, string toName, string fromName, string subject, string html,
         string? attachmentName = null, byte[]? attachmentBytes = null)
     {
@@ -123,8 +123,8 @@ public class EmailService
                 };
             }
 
-            var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var json = System.Text.Json.JsonSerializer.Serialize(payload);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
             var response = await _http.PostAsync("emails", content);
 
@@ -132,15 +132,26 @@ public class EmailService
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
                 Console.WriteLine($"Resend API error ({response.StatusCode}): {errorBody}");
-                return false;
+
+                // Parse Resend's error message so the user sees something useful
+                string friendlyError = "Failed to send email.";
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(errorBody);
+                    if (doc.RootElement.TryGetProperty("message", out var msgProp))
+                        friendlyError = msgProp.GetString() ?? friendlyError;
+                }
+                catch { /* fall back to generic message if parsing fails */ }
+
+                return (false, friendlyError);
             }
 
-            return true;
+            return (true, null);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Email send error: {ex.Message}");
-            return false;
+            return (false, "Could not reach the email service. Please try again.");
         }
     }
 

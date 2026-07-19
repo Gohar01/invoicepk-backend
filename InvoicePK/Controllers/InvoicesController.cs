@@ -102,23 +102,20 @@ public class InvoicesController : ControllerBase
         var user = await _db.Users.FindAsync(userId);
         if (user == null) return NotFound();
 
-        // Generate PDF
         var pdfBytes = _pdf.GenerateInvoicePdf(invoice, user);
 
-        // Send email
-        var sent = await _email.SendInvoiceAsync(invoice, user, pdfBytes);
+        // CHANGED: now returns (Success, Error) instead of just bool
+        var (sent, errorMessage) = await _email.SendInvoiceAsync(invoice, user, pdfBytes);
 
         if (!sent)
-            return StatusCode(500, new { message = "Failed to send email. Check SMTP settings." });
+            return StatusCode(500, new { message = errorMessage ?? "Failed to send email." });
 
-        // Update status to Sent (if still Draft)
         if (invoice.Status == "Draft")
         {
             invoice.Status    = "Sent";
             invoice.UpdatedAt = DateTime.UtcNow;
         }
 
-        // Log the email
         _db.EmailLogs.Add(new EmailLog
         {
             InvoiceId = invoice.Id,
@@ -127,7 +124,6 @@ public class InvoicesController : ControllerBase
         });
 
         await _db.SaveChangesAsync();
-
         return Ok(new { message = $"Invoice sent to {invoice.Client.Email}." });
     }
 
@@ -149,10 +145,12 @@ public class InvoicesController : ControllerBase
         if (user == null) return NotFound();
 
         var pdfBytes = _pdf.GenerateInvoicePdf(invoice, user);
-        var sent = await _email.SendReminderAsync(invoice, user, pdfBytes);
+
+        // CHANGED: now returns (Success, Error) instead of just bool
+        var (sent, errorMessage) = await _email.SendReminderAsync(invoice, user, pdfBytes);
 
         if (!sent)
-            return StatusCode(500, new { message = "Failed to send reminder. Check SMTP settings." });
+            return StatusCode(500, new { message = errorMessage ?? "Failed to send reminder." });
 
         _db.EmailLogs.Add(new EmailLog
         {
