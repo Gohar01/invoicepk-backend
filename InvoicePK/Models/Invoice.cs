@@ -6,6 +6,7 @@ public class Invoice
     public int UserId { get; set; }
     public int ClientId { get; set; }
     public string InvoiceNumber { get; set; } = string.Empty;
+    public string Currency { get; set; } = "PKR";
     public DateOnly IssueDate { get; set; }
     public DateOnly DueDate { get; set; }
     public decimal GSTPercent { get; set; } = 0;

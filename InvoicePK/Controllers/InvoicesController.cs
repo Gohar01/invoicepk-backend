@@ -20,6 +20,8 @@ public class InvoicesController : ControllerBase
     private readonly PdfService _pdf;
     private readonly EmailService _email;
 
+    private static readonly string[] SupportedCurrencies = { "PKR", "USD", "SAR", "AED", "GBP", "EUR" };
+
     public InvoicesController(
         AppDbContext db,
         InvoiceNumberService invoiceNumbers,
@@ -45,7 +47,6 @@ public class InvoicesController : ControllerBase
         if (!string.IsNullOrEmpty(status))
             query = query.Where(i => i.Status == status);
 
-        // Auto-mark overdue
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         await _db.Invoices
             .Where(i => i.UserId == userId && i.Status == "Sent" && i.DueDate < today)
@@ -54,7 +55,7 @@ public class InvoicesController : ControllerBase
         var invoices = await query
             .OrderByDescending(i => i.CreatedAt)
             .Select(i => new InvoiceListItem(
-                i.Id, i.InvoiceNumber, i.Client.Name,
+                i.Id, i.InvoiceNumber, i.Client.Name, i.Currency,
                 i.IssueDate, i.DueDate, i.TotalAmount,
                 i.Status, i.CreatedAt))
             .ToListAsync();
@@ -72,7 +73,7 @@ public class InvoicesController : ControllerBase
         return Ok(MapToDetail(invoice));
     }
 
-    // GET /api/invoices/{id}/pdf  ← NEW
+    // GET /api/invoices/{id}/pdf
     [HttpGet("{id}/pdf")]
     public async Task<IActionResult> DownloadPdf(int id)
     {
@@ -84,11 +85,10 @@ public class InvoicesController : ControllerBase
         if (user == null) return NotFound();
 
         var pdfBytes = _pdf.GenerateInvoicePdf(invoice, user);
-
         return File(pdfBytes, "application/pdf", $"{invoice.InvoiceNumber}.pdf");
     }
 
-    // POST /api/invoices/{id}/send  ← NEW
+    // POST /api/invoices/{id}/send
     [HttpPost("{id}/send")]
     public async Task<IActionResult> SendInvoice(int id)
     {
@@ -103,8 +103,6 @@ public class InvoicesController : ControllerBase
         if (user == null) return NotFound();
 
         var pdfBytes = _pdf.GenerateInvoicePdf(invoice, user);
-
-        // CHANGED: now returns (Success, Error) instead of just bool
         var (sent, errorMessage) = await _email.SendInvoiceAsync(invoice, user, pdfBytes);
 
         if (!sent)
@@ -116,18 +114,13 @@ public class InvoicesController : ControllerBase
             invoice.UpdatedAt = DateTime.UtcNow;
         }
 
-        _db.EmailLogs.Add(new EmailLog
-        {
-            InvoiceId = invoice.Id,
-            Type      = "Invoice",
-            Status    = "Sent"
-        });
-
+        _db.EmailLogs.Add(new EmailLog { InvoiceId = invoice.Id, Type = "Invoice", Status = "Sent" });
         await _db.SaveChangesAsync();
+
         return Ok(new { message = $"Invoice sent to {invoice.Client.Email}." });
     }
 
-    // POST /api/invoices/{id}/remind  ← NEW
+    // POST /api/invoices/{id}/remind
     [HttpPost("{id}/remind")]
     public async Task<IActionResult> SendReminder(int id)
     {
@@ -145,19 +138,12 @@ public class InvoicesController : ControllerBase
         if (user == null) return NotFound();
 
         var pdfBytes = _pdf.GenerateInvoicePdf(invoice, user);
-
-        // CHANGED: now returns (Success, Error) instead of just bool
         var (sent, errorMessage) = await _email.SendReminderAsync(invoice, user, pdfBytes);
 
         if (!sent)
             return StatusCode(500, new { message = errorMessage ?? "Failed to send reminder." });
 
-        _db.EmailLogs.Add(new EmailLog
-        {
-            InvoiceId = invoice.Id,
-            Type      = "Reminder",
-            Status    = "Sent"
-        });
+        _db.EmailLogs.Add(new EmailLog { InvoiceId = invoice.Id, Type = "Reminder", Status = "Sent" });
         await _db.SaveChangesAsync();
 
         return Ok(new { message = $"Reminder sent to {invoice.Client.Email}." });
@@ -174,6 +160,10 @@ public class InvoicesController : ControllerBase
         if (client == null)
             return BadRequest(new { message = "Client not found." });
 
+        var currency = req.Currency?.ToUpper() ?? "PKR";
+        if (!SupportedCurrencies.Contains(currency))
+            return BadRequest(new { message = $"Unsupported currency. Supported: {string.Join(", ", SupportedCurrencies)}" });
+
         var subTotal  = req.Items.Sum(i => i.Quantity * i.UnitPrice);
         var gstAmount = Math.Round(subTotal * (req.GSTPercent / 100), 2);
         var total     = subTotal + gstAmount;
@@ -183,6 +173,7 @@ public class InvoicesController : ControllerBase
             UserId        = userId,
             ClientId      = req.ClientId,
             InvoiceNumber = await _invoiceNumbers.GenerateAsync(userId),
+            Currency      = currency,
             IssueDate     = req.IssueDate,
             DueDate       = req.DueDate,
             GSTPercent    = req.GSTPercent,
@@ -223,6 +214,14 @@ public class InvoicesController : ControllerBase
         if (req.DueDate    != null) invoice.DueDate    = req.DueDate.Value;
         if (req.GSTPercent != null) invoice.GSTPercent = req.GSTPercent.Value;
         if (req.Notes      != null) invoice.Notes      = req.Notes;
+
+        if (req.Currency != null)
+        {
+            var currency = req.Currency.ToUpper();
+            if (!SupportedCurrencies.Contains(currency))
+                return BadRequest(new { message = $"Unsupported currency. Supported: {string.Join(", ", SupportedCurrencies)}" });
+            invoice.Currency = currency;
+        }
 
         if (req.Items != null && req.Items.Any())
         {
@@ -280,6 +279,18 @@ public class InvoicesController : ControllerBase
         return Ok(new { message = "Invoice deleted." });
     }
 
+    // GET /api/invoices/currencies — lets frontend fetch supported list dynamically
+    [HttpGet("currencies")]
+    public IActionResult GetSupportedCurrencies()
+    {
+        var list = SupportedCurrencies.Select(c => new
+        {
+            code = c,
+            symbol = CurrencyHelper.GetSymbol(c)
+        });
+        return Ok(list);
+    }
+
     // ── Helpers ───────────────────────────────────
     private async Task<Invoice?> LoadInvoice(int id, int userId) =>
         await _db.Invoices
@@ -291,6 +302,7 @@ public class InvoicesController : ControllerBase
         i.Id, i.InvoiceNumber,
         new ClientResponse(i.Client.Id, i.Client.Name, i.Client.Email,
             i.Client.Phone, i.Client.Address, i.Client.CreatedAt, 0),
+        i.Currency,
         i.IssueDate, i.DueDate, i.GSTPercent,
         i.SubTotal, i.GSTAmount, i.TotalAmount,
         i.Status, i.Notes,

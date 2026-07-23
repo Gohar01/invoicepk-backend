@@ -7,7 +7,6 @@ public record DashboardSummary(
     int PaidInvoices,
     int UnpaidInvoices,
     int OverdueInvoices,
-    decimal TotalRevenue,
-    decimal PendingAmount,
+    List<CurrencyBreakdown> Breakdown,
     List<InvoiceListItem> RecentInvoices
 );

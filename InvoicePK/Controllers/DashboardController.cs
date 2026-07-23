@@ -28,18 +28,30 @@ public class DashboardController : ControllerBase
             .Where(i => i.UserId == userId)
             .ToListAsync();
 
+        // Group revenue/pending amounts PER CURRENCY — summing across different
+        // currencies (e.g. PKR + USD) as one number would be meaningless.
+        var breakdown = invoices
+            .GroupBy(i => i.Currency)
+            .Select(g => new CurrencyBreakdown(
+                Currency:      g.Key,
+                TotalRevenue:  g.Where(i => i.Status == "Paid").Sum(i => i.TotalAmount),
+                PendingAmount: g.Where(i => i.Status is "Sent" or "Overdue").Sum(i => i.TotalAmount),
+                InvoiceCount:  g.Count()
+            ))
+            .OrderByDescending(b => b.InvoiceCount)
+            .ToList();
+
         var summary = new DashboardSummary(
             TotalInvoices:   invoices.Count,
             PaidInvoices:    invoices.Count(i => i.Status == "Paid"),
             UnpaidInvoices:  invoices.Count(i => i.Status == "Sent" || i.Status == "Draft"),
             OverdueInvoices: invoices.Count(i => i.Status == "Overdue"),
-            TotalRevenue:    invoices.Where(i => i.Status == "Paid").Sum(i => i.TotalAmount),
-            PendingAmount:   invoices.Where(i => i.Status is "Sent" or "Overdue").Sum(i => i.TotalAmount),
+            Breakdown:       breakdown,
             RecentInvoices:  invoices
                 .OrderByDescending(i => i.CreatedAt)
                 .Take(5)
                 .Select(i => new InvoiceListItem(
-                    i.Id, i.InvoiceNumber, i.Client.Name,
+                    i.Id, i.InvoiceNumber, i.Client.Name, i.Currency,
                     i.IssueDate, i.DueDate, i.TotalAmount,
                     i.Status, i.CreatedAt))
                 .ToList()

@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using InvoicePK.Models;
+using InvoicePK.Helpers;
 
 namespace InvoicePK.Services;
 
@@ -156,7 +157,10 @@ public class EmailService
     }
 
     // ── HTML Templates ────────────────────────────
-    private static string BuildInvoiceHtml(Invoice invoice, User user) => $"""
+    private static string BuildInvoiceHtml(Invoice invoice, User user)
+    {
+        var symbol = CurrencyHelper.GetSymbol(invoice.Currency);
+        return $"""
         <!DOCTYPE html>
         <html>
         <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
@@ -183,7 +187,7 @@ public class EmailService
               </tr>
               <tr style="background:#00C16A;color:white;">
                 <td style="padding:10px;"><strong>Total Amount</strong></td>
-                <td style="padding:10px;text-align:right;"><strong>PKR {invoice.TotalAmount:N0}</strong></td>
+                <td style="padding:10px;text-align:right;"><strong>{symbol} {invoice.TotalAmount:N0}</strong></td>
               </tr>
             </table>
             <p>Please make payment by <strong>{invoice.DueDate:dd MMM yyyy}</strong>.</p>
@@ -198,8 +202,12 @@ public class EmailService
         </body>
         </html>
         """;
+    }
 
-    private static string BuildReminderHtml(Invoice invoice, User user) => $"""
+    private static string BuildReminderHtml(Invoice invoice, User user)
+    {
+        var symbol = CurrencyHelper.GetSymbol(invoice.Currency);
+        return $"""
         <!DOCTYPE html>
         <html>
         <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
@@ -213,7 +221,7 @@ public class EmailService
             <table style="width:100%;border-collapse:collapse;margin:20px 0;">
               <tr style="background:#E53E3E;color:white;">
                 <td style="padding:10px;"><strong>Amount Due</strong></td>
-                <td style="padding:10px;text-align:right;"><strong>PKR {invoice.TotalAmount:N0}</strong></td>
+                <td style="padding:10px;text-align:right;"><strong>{symbol} {invoice.TotalAmount:N0}</strong></td>
               </tr>
             </table>
             <p>Please arrange payment at your earliest convenience.</p>
@@ -222,4 +230,5 @@ public class EmailService
         </body>
         </html>
         """;
+    }
 }

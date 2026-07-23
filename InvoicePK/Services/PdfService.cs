@@ -2,6 +2,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using InvoicePK.Models;
+using InvoicePK.Helpers;
 
 namespace InvoicePK.Services;
 
@@ -16,6 +17,8 @@ public class PdfService
 
     public byte[] GenerateInvoicePdf(Invoice invoice, User user)
     {
+        var currencySymbol = CurrencyHelper.GetSymbol(invoice.Currency);
+
         var document = Document.Create(container =>
         {
             container.Page(page =>
@@ -145,9 +148,9 @@ public class PdfService
                             table.Cell().Element(c => DataCell(c, bg)).AlignCenter()
                                 .Text(item.Quantity.ToString("G"));
                             table.Cell().Element(c => DataCell(c, bg)).AlignRight()
-                                .Text($"PKR {item.UnitPrice:N0}");
+                                .Text($"{currencySymbol} {item.UnitPrice:N0}");
                             table.Cell().Element(c => DataCell(c, bg)).AlignRight()
-                                .Text($"PKR {item.Quantity * item.UnitPrice:N0}");
+                                .Text($"{currencySymbol} {item.Quantity * item.UnitPrice:N0}");
                         }
                     });
 
@@ -160,7 +163,7 @@ public class PdfService
                         {
                             r.RelativeItem().Text("Subtotal").FontColor("#555555");
                             r.RelativeItem().AlignRight()
-                                .Text($"PKR {invoice.SubTotal:N0}");
+                                .Text($"{currencySymbol} {invoice.SubTotal:N0}");
                         });
 
                         if (invoice.GSTPercent > 0)
@@ -170,7 +173,7 @@ public class PdfService
                                 r.RelativeItem()
                                     .Text($"GST ({invoice.GSTPercent}%)").FontColor("#555555");
                                 r.RelativeItem().AlignRight()
-                                    .Text($"PKR {invoice.GSTAmount:N0}");
+                                    .Text($"{currencySymbol} {invoice.GSTAmount:N0}");
                             });
                         }
 
@@ -179,7 +182,7 @@ public class PdfService
                         {
                             r.RelativeItem().Text("TOTAL").Bold().FontColor("#ffffff");
                             r.RelativeItem().AlignRight()
-                                .Text($"PKR {invoice.TotalAmount:N0}").Bold().FontColor("#ffffff");
+                                .Text($"{currencySymbol} {invoice.TotalAmount:N0}").Bold().FontColor("#ffffff");
                         });
                     });
 

@@ -6,6 +6,7 @@ public record InvoiceDetailResponse(
     int Id,
     string InvoiceNumber,
     ClientResponse Client,
+    string Currency,
     DateOnly IssueDate,
     DateOnly DueDate,
     decimal GSTPercent,
