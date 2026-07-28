@@ -51,7 +51,9 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend", policy =>
         policy.WithOrigins(
             "http://localhost:5173",
-            "https://invoicepk-frontend.vercel.app"  // update with your actual Vercel URL
+            "https://invoicepk-frontend.vercel.app", // update with your actual Vercel URL
+            "https://invoicepk.online",
+            "https://www.invoicepk.online"
         )
         .AllowAnyHeader()
         .AllowAnyMethod());
