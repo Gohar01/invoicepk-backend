@@ -102,4 +102,23 @@ public class AuthController : ControllerBase
 
         return Ok(new { message = "Password reset successfully. You can now log in." });
     }
+
+    // POST /api/auth/admin-reset-password
+    [HttpPost("admin-reset-password")]
+    public async Task<IActionResult> AdminResetPassword([FromBody] AdminResetRequest req)
+    {
+        var adminSecret = _config["AdminSecret"];
+        if (string.IsNullOrEmpty(adminSecret) || req.AdminSecret != adminSecret)
+            return Unauthorized(new { message = "Invalid admin secret." });
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == req.Email.ToLower());
+        if (user == null)
+            return NotFound(new { message = "No user found with that email." });
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+        user.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = $"Password reset for {user.Email}. Share the new password with them securely." });
+    }
 }
