@@ -122,13 +122,14 @@ public class PdfService
                     col.Item().Table(table =>
                     {
                         var isWideTable = headersList.Count > 5;
-                        var cellPad = isWideTable ? 4 : 6;
-                        var fontSize = isWideTable ? 7.5f : 8f;
+                        var cellPadV = isWideTable ? 4 : 5;
+                        var cellPadH = isWideTable ? 3 : 5;
+                        var fontSize = isWideTable ? 7f : 8f;
 
                         // Dynamic Column definitions
                         table.ColumnsDefinition(cols =>
                         {
-                            cols.ConstantColumn(isWideTable ? 24 : 30); // Sr. #
+                            cols.ConstantColumn(34); // Sr. # (wide enough so "SR. #" never wraps into multiple lines)
                             foreach (var h in headersList)
                             {
                                 cols.RelativeColumn(h.Equals("Description", StringComparison.OrdinalIgnoreCase) ? 2.5f : 1.8f);
@@ -138,7 +139,7 @@ public class PdfService
 
                         // Header row
                         IContainer HeaderCell(IContainer c) =>
-                            c.Background("#1a1a1a").Padding(cellPad);
+                            c.Background("#1a1a1a").PaddingVertical(cellPadV).PaddingHorizontal(cellPadH);
 
                         table.Header(h =>
                         {
@@ -160,7 +161,7 @@ public class PdfService
                             var bg = i % 2 == 0 ? "#ffffff" : "#F9F9F9";
 
                             IContainer DataCell(IContainer c, string bgCol) =>
-                                c.Background(bgCol).BorderBottom(0.5f).BorderColor("#EEEEEE").Padding(cellPad);
+                                c.Background(bgCol).BorderBottom(0.5f).BorderColor("#EEEEEE").PaddingVertical(cellPadV).PaddingHorizontal(cellPadH);
 
                             // Sr. #
                             table.Cell().Element(c => DataCell(c, bg)).AlignCenter()
