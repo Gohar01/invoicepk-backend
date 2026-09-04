@@ -208,12 +208,21 @@ public class InvoicesController : ControllerBase
         if (invoice == null) return NotFound(new { message = "Invoice not found." });
         if (invoice.Status == "Paid")
             return BadRequest(new { message = "Cannot edit a paid invoice." });
+        if (invoice.Status == "Cancelled")
+            return BadRequest(new { message = "Cannot edit a cancelled invoice." });
 
         if (req.ClientId   != null) invoice.ClientId   = req.ClientId.Value;
         if (req.IssueDate  != null) invoice.IssueDate  = req.IssueDate.Value;
         if (req.DueDate    != null) invoice.DueDate    = req.DueDate.Value;
         if (req.GSTPercent != null) invoice.GSTPercent = req.GSTPercent.Value;
         if (req.Notes      != null) invoice.Notes      = req.Notes;
+
+        // Overdue Auto-Reset: If due date is extended to today or future, shift status back to Sent
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (invoice.Status == "Overdue" && invoice.DueDate >= today)
+        {
+            invoice.Status = "Sent";
+        }
 
         if (req.Currency != null)
         {
@@ -248,7 +257,7 @@ public class InvoicesController : ControllerBase
     public async Task<IActionResult> UpdateStatus(int id, UpdateStatusRequest req)
     {
         var userId = User.GetUserId();
-        var validStatuses = new[] { "Draft", "Sent", "Paid", "Overdue" };
+        var validStatuses = new[] { "Draft", "Sent", "Paid", "Overdue", "Cancelled" };
         if (!validStatuses.Contains(req.Status))
             return BadRequest(new { message = "Invalid status." });
 
@@ -271,8 +280,8 @@ public class InvoicesController : ControllerBase
             .FirstOrDefaultAsync(i => i.Id == id && i.UserId == userId);
 
         if (invoice == null) return NotFound(new { message = "Invoice not found." });
-        if (invoice.Status == "Paid")
-            return BadRequest(new { message = "Cannot delete a paid invoice." });
+        if (invoice.Status != "Draft")
+            return BadRequest(new { message = "Only draft invoices can be deleted to prevent sequence gaps." });
 
         _db.Invoices.Remove(invoice);
         await _db.SaveChangesAsync();
