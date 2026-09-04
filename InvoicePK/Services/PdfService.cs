@@ -105,64 +105,97 @@ public class PdfService
 
                     col.Item().PaddingVertical(15);
 
-                    // ── Line Items Table ──────────────────────
+                    // ── Line Items Table: Dynamic Grid ─────────
+                    var itemsList = invoice.Items.ToList();
+                    var headersList = new List<string> { "Description" };
+                    if (itemsList.Count > 0 && itemsList[0].Description.Contains("\n[COLS:"))
+                    {
+                        var parts = itemsList[0].Description.Split("\n[COLS:");
+                        var colsStr = parts[1].Split("]\n[VALS:")[0];
+                        headersList = colsStr.Split('|').ToList();
+                    }
+
                     col.Item().Table(table =>
                     {
-                        // Column definitions
+                        // Dynamic Column definitions
                         table.ColumnsDefinition(cols =>
                         {
-                            cols.RelativeColumn(4);  // Description
-                            cols.RelativeColumn(1);  // Qty
-                            cols.RelativeColumn(2);  // Unit Price
-                            cols.RelativeColumn(2);  // Subtotal
+                            cols.ConstantColumn(30); // Sr. #
+                            foreach (var h in headersList)
+                            {
+                                cols.RelativeColumn(h.Equals("Description", StringComparison.OrdinalIgnoreCase) ? 3 : 2);
+                            }
+                            cols.RelativeColumn(2); // Amount
                         });
 
                         // Header row
                         static IContainer HeaderCell(IContainer c) =>
-                            c.Background("#1a1a1a").Padding(8);
+                            c.Background("#1a1a1a").Padding(6);
 
                         table.Header(h =>
                         {
-                            h.Cell().Element(HeaderCell)
-                                .Text("DESCRIPTION").FontColor("#ffffff").Bold().FontSize(9);
                             h.Cell().Element(HeaderCell).AlignCenter()
-                                .Text("QTY").FontColor("#ffffff").Bold().FontSize(9);
+                                .Text("SR. #").FontColor("#ffffff").Bold().FontSize(8);
+                            foreach (var header in headersList)
+                            {
+                                h.Cell().Element(HeaderCell)
+                                    .Text(header.ToUpper()).FontColor("#ffffff").Bold().FontSize(8);
+                            }
                             h.Cell().Element(HeaderCell).AlignRight()
-                                .Text("UNIT PRICE").FontColor("#ffffff").Bold().FontSize(9);
-                            h.Cell().Element(HeaderCell).AlignRight()
-                                .Text("AMOUNT").FontColor("#ffffff").Bold().FontSize(9);
+                                .Text("AMOUNT").FontColor("#ffffff").Bold().FontSize(8);
                         });
 
                         // Item rows
-                        var items = invoice.Items.ToList();
-                        for (int i = 0; i < items.Count; i++)
+                        for (int i = 0; i < itemsList.Count; i++)
                         {
-                            var item = items[i];
+                            var item = itemsList[i];
                             var bg = i % 2 == 0 ? "#ffffff" : "#F9F9F9";
 
                             static IContainer DataCell(IContainer c, string bg) =>
-                                c.Background(bg).BorderBottom(0.5f).BorderColor("#EEEEEE").Padding(8);
+                                c.Background(bg).BorderBottom(0.5f).BorderColor("#EEEEEE").Padding(6);
 
-                            table.Cell().Element(c => DataCell(c, bg)).Column(column =>
-                            {
-                                if (item.Description.Contains("\n["))
-                                {
-                                    var parts = item.Description.Split("\n[");
-                                    column.Item().Text(parts[0]).Bold();
-                                    var detailsStr = parts[1].Replace("]", "");
-                                    column.Item().Text(detailsStr).FontSize(8).FontColor("#00C16A");
-                                }
-                                else
-                                {
-                                    column.Item().Text(item.Description);
-                                }
-                            });
+                            // Sr. #
                             table.Cell().Element(c => DataCell(c, bg)).AlignCenter()
-                                .Text(item.Quantity.ToString("G"));
+                                .Text((i + 1).ToString()).FontSize(8).FontColor("#777777");
+
+                            // Dynamic Columns
+                            var rowVals = new Dictionary<string, string>();
+                            string mainDesc = item.Description;
+
+                            if (item.Description.Contains("\n[COLS:"))
+                            {
+                                var parts = item.Description.Split("\n[COLS:");
+                                mainDesc = parts[0];
+                                var colsStr = parts[1].Split("]\n[VALS:")[0];
+                                var valsStr = parts[1].Split("]\n[VALS:")[1].Replace("]", "");
+                                var cList = colsStr.Split('|');
+                                var vList = valsStr.Split(" | ");
+
+                                for (int cIdx = 0; cIdx < cList.Length; cIdx++)
+                                {
+                                    var rawVal = cIdx < vList.Length ? vList[cIdx] : "";
+                                    var pairVal = rawVal.Contains(": ") ? rawVal.Split(": ")[1] : rawVal;
+                                    rowVals[cList[cIdx]] = pairVal == "-" ? "" : pairVal;
+                                }
+                            }
+                            else
+                            {
+                                rowVals["Description"] = item.Description;
+                            }
+
+                            foreach (var header in headersList)
+                            {
+                                var textVal = header.Equals("Description", StringComparison.OrdinalIgnoreCase)
+                                    ? mainDesc
+                                    : (rowVals.ContainsKey(header) ? rowVals[header] : "");
+
+                                table.Cell().Element(c => DataCell(c, bg))
+                                    .Text(textVal).FontSize(8);
+                            }
+
+                            // Amount
                             table.Cell().Element(c => DataCell(c, bg)).AlignRight()
-                                .Text($"{currencySymbol} {item.UnitPrice:N0}");
-                            table.Cell().Element(c => DataCell(c, bg)).AlignRight()
-                                .Text($"{currencySymbol} {item.Quantity * item.UnitPrice:N0}");
+                                .Text($"{currencySymbol} {item.Quantity * item.UnitPrice:N0}").FontSize(8).Bold();
                         }
                     });
 
