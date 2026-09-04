@@ -121,32 +121,36 @@ public class PdfService
 
                     col.Item().Table(table =>
                     {
+                        var isWideTable = headersList.Count > 5;
+                        var cellPad = isWideTable ? 4 : 6;
+                        var fontSize = isWideTable ? 7.5f : 8f;
+
                         // Dynamic Column definitions
                         table.ColumnsDefinition(cols =>
                         {
-                            cols.ConstantColumn(30); // Sr. #
+                            cols.ConstantColumn(isWideTable ? 24 : 30); // Sr. #
                             foreach (var h in headersList)
                             {
-                                cols.RelativeColumn(h.Equals("Description", StringComparison.OrdinalIgnoreCase) ? 3 : 2);
+                                cols.RelativeColumn(h.Equals("Description", StringComparison.OrdinalIgnoreCase) ? 2.5f : 1.8f);
                             }
-                            cols.RelativeColumn(2); // Amount
+                            cols.RelativeColumn(1.8f); // Amount
                         });
 
                         // Header row
-                        static IContainer HeaderCell(IContainer c) =>
-                            c.Background("#1a1a1a").Padding(6);
+                        IContainer HeaderCell(IContainer c) =>
+                            c.Background("#1a1a1a").Padding(cellPad);
 
                         table.Header(h =>
                         {
                             h.Cell().Element(HeaderCell).AlignCenter()
-                                .Text("SR. #").FontColor("#ffffff").Bold().FontSize(8);
+                                .Text("SR. #").FontColor("#ffffff").Bold().FontSize(fontSize);
                             foreach (var header in headersList)
                             {
                                 h.Cell().Element(HeaderCell)
-                                    .Text(header.ToUpper()).FontColor("#ffffff").Bold().FontSize(8);
+                                    .Text(header.ToUpper()).FontColor("#ffffff").Bold().FontSize(fontSize);
                             }
                             h.Cell().Element(HeaderCell).AlignRight()
-                                .Text("AMOUNT").FontColor("#ffffff").Bold().FontSize(8);
+                                .Text("AMOUNT").FontColor("#ffffff").Bold().FontSize(fontSize);
                         });
 
                         // Item rows
@@ -155,12 +159,12 @@ public class PdfService
                             var item = itemsList[i];
                             var bg = i % 2 == 0 ? "#ffffff" : "#F9F9F9";
 
-                            static IContainer DataCell(IContainer c, string bg) =>
-                                c.Background(bg).BorderBottom(0.5f).BorderColor("#EEEEEE").Padding(6);
+                            IContainer DataCell(IContainer c, string bgCol) =>
+                                c.Background(bgCol).BorderBottom(0.5f).BorderColor("#EEEEEE").Padding(cellPad);
 
                             // Sr. #
                             table.Cell().Element(c => DataCell(c, bg)).AlignCenter()
-                                .Text((i + 1).ToString()).FontSize(8).FontColor("#777777");
+                                .Text((i + 1).ToString()).FontSize(fontSize).FontColor("#777777");
 
                             // Dynamic Columns
                             var rowVals = new Dictionary<string, string>();
@@ -196,12 +200,12 @@ public class PdfService
                                     : (rowVals.ContainsKey(header) ? rowVals[header] : "");
 
                                 table.Cell().Element(c => DataCell(c, bg))
-                                    .Text(textVal).FontSize(8);
+                                    .Text(textVal).FontSize(fontSize);
                             }
 
                             // Amount
                             table.Cell().Element(c => DataCell(c, bg)).AlignRight()
-                                .Text($"{currencySymbol} {item.Quantity * item.UnitPrice:N0}").FontSize(8).Bold();
+                                .Text($"{currencySymbol} {item.Quantity * item.UnitPrice:N0}").FontSize(fontSize).Bold();
                         }
                     });
 
