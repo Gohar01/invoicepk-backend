@@ -114,6 +114,10 @@ public class PdfService
                         var colsStr = parts[1].Split("]\n[VALS:")[0];
                         headersList = colsStr.Split('|').ToList();
                     }
+                    else if (itemsList.Count > 0 && itemsList.Any(x => x.Quantity != 1 || x.UnitPrice != x.SubTotal))
+                    {
+                        headersList = new List<string> { "Description", "Qty", "Unit Price" };
+                    }
 
                     col.Item().Table(table =>
                     {
@@ -181,6 +185,8 @@ public class PdfService
                             else
                             {
                                 rowVals["Description"] = item.Description;
+                                rowVals["Qty"] = item.Quantity.ToString("G29");
+                                rowVals["Unit Price"] = $"{currencySymbol} {item.UnitPrice:N0}";
                             }
 
                             foreach (var header in headersList)
