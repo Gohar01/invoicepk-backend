@@ -164,6 +164,9 @@ public class InvoicesController : ControllerBase
         if (!SupportedCurrencies.Contains(currency))
             return BadRequest(new { message = $"Unsupported currency. Supported: {string.Join(", ", SupportedCurrencies)}" });
 
+        if (req.DueDate < req.IssueDate)
+            return BadRequest(new { message = "Due date cannot be earlier than issue date." });
+
         var subTotal  = req.Items.Sum(i => i.Quantity * i.UnitPrice);
         var gstAmount = Math.Round(subTotal * (req.GSTPercent / 100), 2);
         var total     = subTotal + gstAmount;
@@ -217,6 +220,9 @@ public class InvoicesController : ControllerBase
         if (req.GSTPercent != null) invoice.GSTPercent = req.GSTPercent.Value;
         if (req.Notes      != null) invoice.Notes      = req.Notes;
 
+        if (invoice.DueDate < invoice.IssueDate)
+            return BadRequest(new { message = "Due date cannot be earlier than issue date." });
+
         // Overdue Auto-Reset: If due date is extended to today or future, shift status back to Sent
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         if (invoice.Status == "Overdue" && invoice.DueDate >= today)
@@ -264,6 +270,9 @@ public class InvoicesController : ControllerBase
         var invoice = await _db.Invoices
             .FirstOrDefaultAsync(i => i.Id == id && i.UserId == userId);
         if (invoice == null) return NotFound(new { message = "Invoice not found." });
+
+        if (invoice.Status == "Paid" || invoice.Status == "Cancelled")
+            return BadRequest(new { message = $"Cannot change status of a {invoice.Status.ToLower()} invoice." });
 
         invoice.Status    = req.Status;
         invoice.UpdatedAt = DateTime.UtcNow;

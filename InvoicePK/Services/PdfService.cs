@@ -143,8 +143,20 @@ public class PdfService
                             static IContainer DataCell(IContainer c, string bg) =>
                                 c.Background(bg).BorderBottom(0.5f).BorderColor("#EEEEEE").Padding(8);
 
-                            table.Cell().Element(c => DataCell(c, bg))
-                                .Text(item.Description);
+                            table.Cell().Element(c => DataCell(c, bg)).Column(column =>
+                            {
+                                if (item.Description.Contains("\n["))
+                                {
+                                    var parts = item.Description.Split("\n[");
+                                    column.Item().Text(parts[0]).Bold();
+                                    var detailsStr = parts[1].Replace("]", "");
+                                    column.Item().Text(detailsStr).FontSize(8).FontColor("#00C16A");
+                                }
+                                else
+                                {
+                                    column.Item().Text(item.Description);
+                                }
+                            });
                             table.Cell().Element(c => DataCell(c, bg)).AlignCenter()
                                 .Text(item.Quantity.ToString("G"));
                             table.Cell().Element(c => DataCell(c, bg)).AlignRight()
