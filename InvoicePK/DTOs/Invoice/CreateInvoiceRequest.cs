@@ -6,8 +6,8 @@ public record CreateInvoiceRequest(
     [Required] int ClientId,
     [Required] DateOnly IssueDate,
     [Required] DateOnly DueDate,
-    [Required] string Currency,
+    [Required, MaxLength(10)] string Currency,
     [Range(0, 100)] decimal GSTPercent,
-    string? Notes,
+    [MaxLength(500)] string? Notes,
     [Required, MinLength(1)] List<InvoiceItemRequest> Items
 );

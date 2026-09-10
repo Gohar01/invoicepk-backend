@@ -92,10 +92,10 @@ public class ClientsController : ControllerBase
 
         if (client == null) return NotFound(new { message = "Client not found." });
 
-        if (req.Name    != null) client.Name    = req.Name;
-        if (req.Email   != null) client.Email   = req.Email;
-        if (req.Phone   != null) client.Phone   = req.Phone;
-        if (req.Address != null) client.Address = req.Address;
+        if (req.Name    != null) client.Name    = req.Name.Trim();
+        if (req.Email   != null) client.Email   = string.IsNullOrWhiteSpace(req.Email) ? null : req.Email.Trim();
+        if (req.Phone   != null) client.Phone   = string.IsNullOrWhiteSpace(req.Phone) ? null : req.Phone.Trim();
+        if (req.Address != null) client.Address = string.IsNullOrWhiteSpace(req.Address) ? null : req.Address.Trim();
 
         await _db.SaveChangesAsync();
 

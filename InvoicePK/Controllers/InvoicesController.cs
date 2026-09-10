@@ -168,7 +168,7 @@ public class InvoicesController : ControllerBase
             return BadRequest(new { message = "Due date cannot be earlier than issue date." });
 
         var subTotal  = req.Items.Sum(i => i.Quantity * i.UnitPrice);
-        var gstAmount = Math.Round(subTotal * (req.GSTPercent / 100), 2);
+        var gstAmount = Math.Round(subTotal * (req.GSTPercent / 100), 2, MidpointRounding.AwayFromZero);
         var total     = subTotal + gstAmount;
 
         var invoice = new Invoice
@@ -249,7 +249,7 @@ public class InvoicesController : ControllerBase
             }).ToList();
 
             invoice.SubTotal    = invoice.Items.Sum(i => i.Quantity * i.UnitPrice);
-            invoice.GSTAmount   = Math.Round(invoice.SubTotal * (invoice.GSTPercent / 100), 2);
+            invoice.GSTAmount   = Math.Round(invoice.SubTotal * (invoice.GSTPercent / 100), 2, MidpointRounding.AwayFromZero);
             invoice.TotalAmount = invoice.SubTotal + invoice.GSTAmount;
         }
 

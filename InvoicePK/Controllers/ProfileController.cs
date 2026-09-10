@@ -41,11 +41,11 @@ public class ProfileController : ControllerBase
         var user = await _db.Users.FindAsync(userId);
         if (user == null) return NotFound();
 
-        if (req.FullName != null)     user.FullName     = req.FullName;
-        if (req.BusinessName != null) user.BusinessName = req.BusinessName;
-        if (req.Phone != null)        user.Phone        = req.Phone;
-        if (req.Address != null)      user.Address      = req.Address;
-        if (req.NTN != null)          user.NTN          = req.NTN;
+        if (req.FullName != null)     user.FullName     = req.FullName.Trim();
+        if (req.BusinessName != null) user.BusinessName = string.IsNullOrWhiteSpace(req.BusinessName) ? null : req.BusinessName.Trim();
+        if (req.Phone != null)        user.Phone        = string.IsNullOrWhiteSpace(req.Phone) ? null : req.Phone.Trim();
+        if (req.Address != null)      user.Address      = string.IsNullOrWhiteSpace(req.Address) ? null : req.Address.Trim();
+        if (req.NTN != null)          user.NTN          = string.IsNullOrWhiteSpace(req.NTN) ? null : req.NTN.Trim();
         user.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync();

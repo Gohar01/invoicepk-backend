@@ -19,10 +19,12 @@ public class AppDbContext : DbContext
         mb.Entity<User>(e => {
             e.HasIndex(u => u.Email).IsUnique();
             e.Property(u => u.Plan).HasDefaultValue("Trial");
+            e.Property(u => u.Phone).HasMaxLength(100);
         });
 
         // Client → User
         mb.Entity<Client>(e => {
+            e.Property(c => c.Phone).HasMaxLength(100);
             e.HasOne(c => c.User)
              .WithMany(u => u.Clients)
              .HasForeignKey(c => c.UserId)
