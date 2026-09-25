@@ -88,6 +88,66 @@ public class InvoicesController : ControllerBase
         return File(pdfBytes, "application/pdf", $"{invoice.InvoiceNumber}.pdf");
     }
 
+    // POST /api/invoices/preview-guest (Ungated for guest visitors)
+    [AllowAnonymous]
+    [HttpPost("preview-guest")]
+    public IActionResult GenerateGuestPdf([FromBody] GuestInvoiceRequest req)
+    {
+        if (req.Items == null || !req.Items.Any())
+            return BadRequest(new { message = "At least one item is required." });
+
+        var currency = req.Currency?.ToUpper() ?? "PKR";
+        if (!SupportedCurrencies.Contains(currency))
+            currency = "PKR";
+
+        var subTotal  = req.Items.Sum(i => i.Quantity * i.UnitPrice);
+        var gstAmount = Math.Round(subTotal * (req.GSTPercent / 100), 2, MidpointRounding.AwayFromZero);
+        var total     = subTotal + gstAmount;
+
+        var guestUser = new User
+        {
+            FullName     = req.BusinessName,
+            BusinessName = req.BusinessName,
+            Address      = req.SenderAddress,
+            Phone        = req.SenderPhone,
+            Email        = req.SenderEmail ?? "hello@invoicepk.online",
+            NTN          = req.SenderNTN,
+            LogoUrl      = req.LogoUrl
+        };
+
+        var guestClient = new Client
+        {
+            Name    = req.ClientName,
+            Address = req.ClientAddress,
+            Phone   = req.ClientPhone,
+            Email   = req.ClientEmail
+        };
+
+        var guestInvoice = new Invoice
+        {
+            InvoiceNumber = "INV-PREVIEW",
+            Currency      = currency,
+            IssueDate     = req.IssueDate,
+            DueDate       = req.DueDate,
+            GSTPercent    = req.GSTPercent,
+            SubTotal      = subTotal,
+            GSTAmount     = gstAmount,
+            TotalAmount   = total,
+            Notes         = req.Notes,
+            Status        = "Draft",
+            Client        = guestClient,
+            Items         = req.Items.Select(i => new InvoiceItem
+            {
+                Description = i.Description,
+                Quantity    = i.Quantity,
+                UnitPrice   = i.UnitPrice
+            }).ToList()
+        };
+
+        var pdfBytes = _pdf.GenerateInvoicePdf(guestInvoice, guestUser);
+        return File(pdfBytes, "application/pdf", "Invoice_Preview.pdf");
+    }
+
     // POST /api/invoices/{id}/send
     [HttpPost("{id}/send")]
     public async Task<IActionResult> SendInvoice(int id)
