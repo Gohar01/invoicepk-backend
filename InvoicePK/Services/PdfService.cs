@@ -273,9 +273,21 @@ public class PdfService
 
                     // ── Footer ────────────────────────────────
                     col.Item().PaddingTop(30).LineHorizontal(0.5f).LineColor("#E0E0E0");
-                    col.Item().PaddingTop(8).AlignCenter()
-                        .Text("Thank you for your business!")
-                        .FontColor("#888888").FontSize(9).Italic();
+                    var isProUser = user.Plan != null && user.Plan.Equals("Pro", StringComparison.OrdinalIgnoreCase);
+                    if (isProUser)
+                    {
+                        col.Item().PaddingTop(8).AlignCenter()
+                            .Text("Thank you for your business!")
+                            .FontColor("#888888").FontSize(9).Italic();
+                    }
+                    else
+                    {
+                        col.Item().PaddingTop(8).Row(r =>
+                        {
+                            r.RelativeItem().Text("Thank you for your business!").FontColor("#888888").FontSize(8.5f).Italic();
+                            r.RelativeItem().AlignRight().Text("Invoiced with InvoicePK  •  invoicepk.online").FontColor("#00C16A").FontSize(8.5f).Bold();
+                        });
+                    }
                 });
             });
         });

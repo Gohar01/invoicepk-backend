@@ -52,6 +52,74 @@ public class AuthController : ControllerBase
         return Ok(new AuthResponse(token, user.FullName, user.Email, user.Plan));
     }
 
+    // POST /api/auth/google
+    [HttpPost("google")]
+    public async Task<IActionResult> GoogleAuth([FromBody] GoogleAuthRequest req)
+    {
+        string? email = req.Email;
+        string? name = req.FullName;
+
+        // If a JWT credential was supplied from Google GIS, decode payload
+        if (!string.IsNullOrEmpty(req.Credential))
+        {
+            try
+            {
+                var parts = req.Credential.Split('.');
+                if (parts.Length >= 2)
+                {
+                    var payloadJson = System.Text.Encoding.UTF8.GetString(Base64UrlDecode(parts[1]));
+                    using var doc = System.Text.Json.JsonDocument.Parse(payloadJson);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("email", out var emailProp))
+                        email = emailProp.GetString();
+                    if (root.TryGetProperty("name", out var nameProp))
+                        name = nameProp.GetString();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Google token parse warning: {ex.Message}");
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+            return BadRequest(new { message = "Email is required for Google Sign-In." });
+
+        email = email.Trim().ToLowerInvariant();
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
+
+        if (user == null)
+        {
+            user = new User
+            {
+                FullName      = !string.IsNullOrWhiteSpace(name) ? name.Trim() : "Google User",
+                Email         = email,
+                PasswordHash  = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
+                BusinessName  = !string.IsNullOrWhiteSpace(req.BusinessName) ? req.BusinessName.Trim() : (!string.IsNullOrWhiteSpace(name) ? $"{name.Trim()}'s Business" : "My Business"),
+                Plan          = "Trial",
+                PlanExpiresAt = DateTime.UtcNow.AddDays(14)
+            };
+
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync();
+        }
+
+        var token = _jwt.GenerateToken(user);
+        return Ok(new AuthResponse(token, user.FullName, user.Email, user.Plan));
+    }
+
+    private static byte[] Base64UrlDecode(string input)
+    {
+        var output = input;
+        output = output.Replace('-', '+').Replace('_', '/');
+        switch (output.Length % 4)
+        {
+            case 2: output += "=="; break;
+            case 3: output += "="; break;
+        }
+        return Convert.FromBase64String(output);
+    }
+
     // POST /api/auth/login
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest req)
