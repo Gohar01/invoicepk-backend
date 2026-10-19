@@ -187,7 +187,7 @@ public class EmailService
               </tr>
               <tr style="background:#00C16A;color:white;">
                 <td style="padding:10px;"><strong>Total Amount</strong></td>
-                <td style="padding:10px;text-align:right;"><strong>{symbol} {invoice.TotalAmount:N0}</strong></td>
+                <td style="padding:10px;text-align:right;"><strong>{symbol} {FormatEmailAmount(invoice.TotalAmount, invoice.Currency)}</strong></td>
               </tr>
             </table>
             <p>Please make payment by <strong>{invoice.DueDate:dd MMM yyyy}</strong>.</p>
@@ -221,7 +221,7 @@ public class EmailService
             <table style="width:100%;border-collapse:collapse;margin:20px 0;">
               <tr style="background:#E53E3E;color:white;">
                 <td style="padding:10px;"><strong>Amount Due</strong></td>
-                <td style="padding:10px;text-align:right;"><strong>{symbol} {invoice.TotalAmount:N0}</strong></td>
+                <td style="padding:10px;text-align:right;"><strong>{symbol} {FormatEmailAmount(invoice.TotalAmount, invoice.Currency)}</strong></td>
               </tr>
             </table>
             <p>Please arrange payment at your earliest convenience.</p>
@@ -230,5 +230,11 @@ public class EmailService
         </body>
         </html>
         """;
+    }
+
+    private static string FormatEmailAmount(decimal amount, string currency)
+    {
+        var hasDecimals = amount % 1 != 0 || !string.Equals(currency, "PKR", StringComparison.OrdinalIgnoreCase);
+        return hasDecimals ? amount.ToString("N2") : amount.ToString("N0");
     }
 }

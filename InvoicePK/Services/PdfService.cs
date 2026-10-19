@@ -126,6 +126,12 @@ public class PdfService
 
                     // ── Line Items Table: Dynamic Grid ─────────
                     var itemsList = invoice.Items.ToList();
+                    var hasDecimals = itemsList.Any(x => x.UnitPrice % 1 != 0 || (x.Quantity * x.UnitPrice) % 1 != 0)
+                        || invoice.SubTotal % 1 != 0
+                        || invoice.GSTAmount % 1 != 0
+                        || invoice.TotalAmount % 1 != 0
+                        || !string.Equals(invoice.Currency, "PKR", StringComparison.OrdinalIgnoreCase);
+
                     var headersList = new List<string> { "Description" };
                     if (itemsList.Count > 0 && itemsList[0].Description.Contains("\n[COLS:"))
                     {
@@ -210,7 +216,7 @@ public class PdfService
                             {
                                 rowVals["Description"] = item.Description;
                                 rowVals["Qty"] = item.Quantity.ToString("G29");
-                                rowVals["Unit Price"] = $"{currencySymbol} {item.UnitPrice:N0}";
+                                rowVals["Unit Price"] = $"{currencySymbol} {FormatAmount(item.UnitPrice, hasDecimals)}";
                             }
 
                             foreach (var header in headersList)
@@ -225,7 +231,7 @@ public class PdfService
 
                             // Amount
                             table.Cell().Element(c => DataCell(c, bg)).AlignRight()
-                                .Text($"{currencySymbol} {item.Quantity * item.UnitPrice:N0}").FontSize(fontSize).Bold();
+                                .Text($"{currencySymbol} {FormatAmount(item.Quantity * item.UnitPrice, hasDecimals)}").FontSize(fontSize).Bold();
                         }
                     });
 
@@ -238,7 +244,7 @@ public class PdfService
                         {
                             r.RelativeItem().Text("Subtotal").FontColor("#555555");
                             r.RelativeItem().AlignRight()
-                                .Text($"{currencySymbol} {invoice.SubTotal:N0}");
+                                .Text($"{currencySymbol} {FormatAmount(invoice.SubTotal, hasDecimals)}");
                         });
 
                         if (invoice.GSTPercent > 0)
@@ -248,7 +254,7 @@ public class PdfService
                                 r.RelativeItem()
                                     .Text($"GST ({invoice.GSTPercent}%)").FontColor("#555555");
                                 r.RelativeItem().AlignRight()
-                                    .Text($"{currencySymbol} {invoice.GSTAmount:N0}");
+                                    .Text($"{currencySymbol} {FormatAmount(invoice.GSTAmount, hasDecimals)}");
                             });
                         }
 
@@ -257,7 +263,7 @@ public class PdfService
                         {
                             r.RelativeItem().Text("TOTAL").Bold().FontColor("#ffffff");
                             r.RelativeItem().AlignRight()
-                                .Text($"{currencySymbol} {invoice.TotalAmount:N0}").Bold().FontColor("#ffffff");
+                                .Text($"{currencySymbol} {FormatAmount(invoice.TotalAmount, hasDecimals)}").Bold().FontColor("#ffffff");
                         });
                     });
 
@@ -355,4 +361,7 @@ public class PdfService
             });
         }
     }
+
+    private static string FormatAmount(decimal value, bool forceDecimals) =>
+        forceDecimals ? value.ToString("N2") : (value % 1 == 0 ? value.ToString("N0") : value.ToString("N2"));
 }
