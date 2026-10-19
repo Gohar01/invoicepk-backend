@@ -95,6 +95,54 @@ public class EmailService
         );
     }
 
+    // ── Payment Proof Alert to Admin ──────────────
+    public async Task<(bool Success, string? Error)> SendPaymentProofAlertAsync(PaymentProof proof)
+    {
+        var adminEmail = _config["AdminEmail"] ?? "gohar.rehman001@gmail.com";
+        var cleanPhone = proof.SenderPhone?.Replace(" ", "").Replace("-", "").Replace("+", "") ?? "";
+        if (cleanPhone.StartsWith("03")) cleanPhone = "92" + cleanPhone.Substring(1);
+
+        var waLink = !string.IsNullOrEmpty(cleanPhone) ? $"https://wa.me/{cleanPhone}" : "";
+
+        var html = $"""
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#333;">
+              <div style="background:#00C16A;padding:20px;border-radius:8px 8px 0 0;color:white;">
+                <h1 style="margin:0;font-size:20px;">🚨 New Payment Proof Submitted</h1>
+                <p style="margin:4px 0 0 0;font-size:14px;opacity:0.9;">InvoicePK Pro Upgrade Request</p>
+              </div>
+              <div style="background:#f9f9f9;padding:24px;border:1px solid #eee;border-radius:0 0 8px 8px;">
+                <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                  <tr><td style="padding:8px 0;color:#666;">Plan:</td><td style="padding:8px 0;font-weight:bold;color:#00C16A;">{proof.Plan}</td></tr>
+                  <tr><td style="padding:8px 0;color:#666;">Amount:</td><td style="padding:8px 0;font-weight:bold;">PKR {proof.Amount:N0}</td></tr>
+                  <tr><td style="padding:8px 0;color:#666;">Transaction ID / Ref:</td><td style="padding:8px 0;font-weight:bold;font-family:monospace;background:#e9f9f1;padding:4px 8px;border-radius:4px;">{proof.TransactionId}</td></tr>
+                  <tr><td style="padding:8px 0;color:#666;">Customer / Business:</td><td style="padding:8px 0;font-weight:bold;">{proof.SenderName}</td></tr>
+                  <tr><td style="padding:8px 0;color:#666;">Phone / WhatsApp:</td><td style="padding:8px 0;">{proof.SenderPhone ?? "None provided"}</td></tr>
+                  <tr><td style="padding:8px 0;color:#666;">Account Email:</td><td style="padding:8px 0;">{proof.AccountEmail ?? "None provided"}</td></tr>
+                  <tr><td style="padding:8px 0;color:#666;">Submitted At:</td><td style="padding:8px 0;">{proof.CreatedAt:dd MMM yyyy, hh:mm tt} UTC</td></tr>
+                </table>
+
+                {(!string.IsNullOrEmpty(waLink) ? $@"
+                <div style=""margin-top:20px;text-align:center;"">
+                  <a href=""{waLink}"" style=""background:#25D366;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;display:inline-block;"">
+                    Chat on WhatsApp ({proof.SenderPhone})
+                  </a>
+                </div>" : "")}
+              </div>
+            </body>
+            </html>
+            """;
+
+        return await SendAsync(
+            to: adminEmail,
+            toName: "InvoicePK Admin",
+            fromName: "InvoicePK Payments",
+            subject: $"🚨 Payment Proof: {proof.Plan} (Rs. {proof.Amount:N0}) - {proof.SenderName} [Trx: {proof.TransactionId}]",
+            html: html
+        );
+    }
+
     // ── Core send method (calls Resend API) ───────
     private async Task<(bool Success, string? Error)> SendAsync(
         string to, string toName, string fromName, string subject, string html,

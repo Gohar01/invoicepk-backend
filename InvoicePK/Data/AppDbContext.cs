@@ -12,6 +12,7 @@ public class AppDbContext : DbContext
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceItem> InvoiceItems => Set<InvoiceItem>();
     public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
+    public DbSet<PaymentProof> PaymentProofs => Set<PaymentProof>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -64,6 +65,15 @@ public class AppDbContext : DbContext
              .WithMany(i => i.EmailLogs)
              .HasForeignKey(el => el.InvoiceId)
              .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // PaymentProof → User
+        mb.Entity<PaymentProof>(e => {
+            e.HasOne(p => p.User)
+             .WithMany()
+             .HasForeignKey(p => p.UserId)
+             .OnDelete(DeleteBehavior.SetNull);
+            e.Property(p => p.Status).HasDefaultValue("Pending");
         });
     }
 }

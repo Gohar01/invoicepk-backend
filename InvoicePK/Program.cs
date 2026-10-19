@@ -89,6 +89,33 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
+
+    try
+    {
+        if (app.Environment.IsProduction())
+        {
+            db.Database.ExecuteSqlRaw(@"
+                CREATE TABLE IF NOT EXISTS ""PaymentProofs"" (
+                    ""Id"" SERIAL PRIMARY KEY,
+                    ""UserId"" INT NULL REFERENCES ""Users""(""Id"") ON DELETE SET NULL,
+                    ""SenderName"" TEXT NOT NULL,
+                    ""SenderPhone"" TEXT NULL,
+                    ""AccountEmail"" TEXT NULL,
+                    ""TransactionId"" TEXT NOT NULL,
+                    ""Plan"" TEXT NOT NULL,
+                    ""Amount"" NUMERIC(18,2) NOT NULL,
+                    ""Status"" TEXT NOT NULL DEFAULT 'Pending',
+                    ""AdminNotes"" TEXT NULL,
+                    ""CreatedAt"" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                    ""ProcessedAt"" TIMESTAMP WITH TIME ZONE NULL
+                );
+            ");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"PaymentProofs table check warning: {ex.Message}");
+    }
 }
 
 // ── Middleware Pipeline ───────────────────────────
