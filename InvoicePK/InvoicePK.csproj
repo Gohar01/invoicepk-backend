@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <!-- Database - SQL Server for local dev -->
+    <PackageReference Include="Google.Apis.Auth" Version="1.77.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.0" />
     <!-- Database - PostgreSQL for production -->
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.0" />
