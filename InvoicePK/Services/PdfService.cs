@@ -133,11 +133,14 @@ public class PdfService
                         || !string.Equals(invoice.Currency, "PKR", StringComparison.OrdinalIgnoreCase);
 
                     var headersList = new List<string> { "Description" };
-                    if (itemsList.Count > 0 && itemsList[0].Description.Contains("\n[COLS:"))
+                    var itemWithCols = itemsList.FirstOrDefault(x => !string.IsNullOrEmpty(x.Description) && x.Description.Contains("\n[COLS:"));
+                    if (itemWithCols != null)
                     {
-                        var parts = itemsList[0].Description.Split("\n[COLS:");
-                        var colsStr = parts[1].Split("]\n[VALS:")[0];
-                        headersList = colsStr.Split('|').ToList();
+                        var (_, _, parsedCols) = ParseItemDescription(itemWithCols.Description);
+                        if (parsedCols.Count > 0)
+                        {
+                            headersList = parsedCols;
+                        }
                     }
                     else if (itemsList.Count > 0 && itemsList.Any(x => x.Quantity != 1 || x.UnitPrice != x.SubTotal))
                     {
@@ -193,26 +196,9 @@ public class PdfService
                                 .Text((i + 1).ToString()).FontSize(fontSize).FontColor("#777777");
 
                             // Dynamic Columns
-                            var rowVals = new Dictionary<string, string>();
-                            string mainDesc = item.Description;
+                            var (mainDesc, rowVals, _) = ParseItemDescription(item.Description);
 
-                            if (item.Description.Contains("\n[COLS:"))
-                            {
-                                var parts = item.Description.Split("\n[COLS:");
-                                mainDesc = parts[0];
-                                var colsStr = parts[1].Split("]\n[VALS:")[0];
-                                var valsStr = parts[1].Split("]\n[VALS:")[1].Replace("]", "");
-                                var cList = colsStr.Split('|');
-                                var vList = valsStr.Split(" | ");
-
-                                for (int cIdx = 0; cIdx < cList.Length; cIdx++)
-                                {
-                                    var rawVal = cIdx < vList.Length ? vList[cIdx] : "";
-                                    var pairVal = rawVal.Contains(": ") ? rawVal.Split(": ")[1] : rawVal;
-                                    rowVals[cList[cIdx]] = pairVal == "-" ? "" : pairVal;
-                                }
-                            }
-                            else
+                            if (!item.Description.Contains("\n[COLS:"))
                             {
                                 rowVals["Description"] = item.Description;
                                 rowVals["Qty"] = item.Quantity.ToString("G29");
@@ -364,4 +350,60 @@ public class PdfService
 
     private static string FormatAmount(decimal value, bool forceDecimals) =>
         forceDecimals ? value.ToString("N2") : (value % 1 == 0 ? value.ToString("N0") : value.ToString("N2"));
+
+    private static (string MainDescription, Dictionary<string, string> CustomValues, List<string> Columns) ParseItemDescription(string description)
+    {
+        var customValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var columns = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(description))
+            return (string.Empty, customValues, columns);
+
+        var colsIdx = description.IndexOf("\n[COLS:", StringComparison.Ordinal);
+        if (colsIdx < 0)
+            return (description, customValues, columns);
+
+        var mainDesc = description.Substring(0, colsIdx);
+        var rest = description.Substring(colsIdx + "\n[COLS:".Length);
+
+        var valsIdx = rest.IndexOf("]\n[VALS:", StringComparison.Ordinal);
+        if (valsIdx < 0)
+            return (mainDesc, customValues, columns);
+
+        var colsStr = rest.Substring(0, valsIdx);
+        var valsStr = rest.Substring(valsIdx + "]\n[VALS:".Length);
+        if (valsStr.EndsWith("]")) valsStr = valsStr.Substring(0, valsStr.Length - 1);
+
+        var colList = colsStr.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        columns.AddRange(colList);
+
+        // Robust pair parsing
+        var entries = valsStr.Split(" | ");
+        for (int i = 0; i < colList.Length; i++)
+        {
+            var col = colList[i];
+            if (i < entries.Length)
+            {
+                var entry = entries[i];
+                var prefix = col + ": ";
+                if (entry.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    var val = entry.Substring(prefix.Length).Trim();
+                    customValues[col] = (val == "-" ? "" : val);
+                }
+                else
+                {
+                    var colonIdx = entry.IndexOf(": ", StringComparison.Ordinal);
+                    var val = colonIdx >= 0 ? entry.Substring(colonIdx + 2).Trim() : entry.Trim();
+                    customValues[col] = (val == "-" ? "" : val);
+                }
+            }
+            else
+            {
+                customValues[col] = "";
+            }
+        }
+
+        return (mainDesc, customValues, columns);
+    }
 }

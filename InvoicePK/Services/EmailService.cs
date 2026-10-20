@@ -19,8 +19,13 @@ public class EmailService
         _config = config;
         _http = httpClientFactory.CreateClient();
         _http.BaseAddress = new Uri("https://api.resend.com/");
-        _http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", _config["Resend:ApiKey"]);
+    }
+
+    private string? GetApiKey()
+    {
+        return _config["Resend:ApiKey"]
+            ?? Environment.GetEnvironmentVariable("RESEND_API_KEY")
+            ?? Environment.GetEnvironmentVariable("Resend__ApiKey");
     }
 
     // ── Send Invoice ──────────────────────────────
@@ -37,7 +42,8 @@ public class EmailService
             subject: $"Invoice {invoice.InvoiceNumber} from {user.BusinessName ?? user.FullName}",
             html: html,
             attachmentName: $"{invoice.InvoiceNumber}.pdf",
-            attachmentBytes: pdfBytes
+            attachmentBytes: pdfBytes,
+            replyTo: user.Email
         );
     }
 
@@ -55,7 +61,8 @@ public class EmailService
             subject: $"Payment Reminder — Invoice {invoice.InvoiceNumber} is Overdue",
             html: html,
             attachmentName: $"{invoice.InvoiceNumber}.pdf",
-            attachmentBytes: pdfBytes
+            attachmentBytes: pdfBytes,
+            replyTo: user.Email
         );
     }
 
@@ -146,11 +153,20 @@ public class EmailService
     // ── Core send method (calls Resend API) ───────
     private async Task<(bool Success, string? Error)> SendAsync(
         string to, string toName, string fromName, string subject, string html,
-        string? attachmentName = null, byte[]? attachmentBytes = null)
+        string? attachmentName = null, byte[]? attachmentBytes = null, string? replyTo = null)
     {
         try
         {
-            var fromEmail = _config["Resend:FromEmail"] ?? "onboarding@resend.dev";
+            var apiKey = GetApiKey();
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                Console.WriteLine("[EmailService] Resend API key is not configured. Email dispatch skipped.");
+                return (false, "Email dispatch is not configured. Missing Resend API key.");
+            }
+
+            var fromEmail = _config["Resend:FromEmail"] 
+                ?? Environment.GetEnvironmentVariable("RESEND_FROM_EMAIL") 
+                ?? "support@invoicepk.online";
 
             var payload = new Dictionary<string, object?>
             {
@@ -159,6 +175,11 @@ public class EmailService
                 ["subject"] = subject,
                 ["html"]    = html,
             };
+
+            if (!string.IsNullOrWhiteSpace(replyTo))
+            {
+                payload["reply_to"] = replyTo;
+            }
 
             if (attachmentBytes != null && attachmentName != null)
             {
@@ -175,7 +196,13 @@ public class EmailService
             var json = System.Text.Json.JsonSerializer.Serialize(payload);
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-            var response = await _http.PostAsync("emails", content);
+            var request = new HttpRequestMessage(HttpMethod.Post, "emails")
+            {
+                Content = content
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
+
+            var response = await _http.SendAsync(request);
 
             if (!response.IsSuccessStatusCode)
             {

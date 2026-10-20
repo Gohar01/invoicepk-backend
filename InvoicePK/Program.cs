@@ -111,10 +111,32 @@ using (var scope = app.Services.CreateScope())
                 );
             ");
         }
+        else
+        {
+            db.Database.ExecuteSqlRaw(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'PaymentProofs')
+                BEGIN
+                    CREATE TABLE PaymentProofs (
+                        Id INT IDENTITY(1,1) PRIMARY KEY,
+                        UserId INT NULL FOREIGN KEY REFERENCES Users(Id) ON DELETE SET NULL,
+                        SenderName NVARCHAR(MAX) NOT NULL,
+                        SenderPhone NVARCHAR(MAX) NULL,
+                        AccountEmail NVARCHAR(MAX) NULL,
+                        TransactionId NVARCHAR(MAX) NOT NULL,
+                        [Plan] NVARCHAR(MAX) NOT NULL,
+                        Amount DECIMAL(18,2) NOT NULL,
+                        Status NVARCHAR(50) NOT NULL DEFAULT 'Pending',
+                        AdminNotes NVARCHAR(MAX) NULL,
+                        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                        ProcessedAt DATETIME2 NULL
+                    );
+                END
+            ");
+        }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"PaymentProofs table check warning: {ex.Message}");
+        Console.WriteLine($"PaymentProofs table sync warning: {ex.Message}");
     }
 }
 
